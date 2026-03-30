@@ -24,6 +24,17 @@ function buildPlayers(playerCount: number): SetupPlayerInput[] {
   }));
 }
 
+function buildPlayersWithoutCleric(playerCount: number): SetupPlayerInput[] {
+  return buildPlayers(playerCount).map((player) =>
+    player.role === 'cleric'
+      ? {
+          ...player,
+          role: 'villager' as const,
+        }
+      : player,
+  );
+}
+
 function selectNightInputs(gameState: GameState, primaryTargetIndex = 3): GameState {
   const activeNight = gameState.currentNight;
   if (!activeNight) {
@@ -78,8 +89,9 @@ describe('game logic', () => {
     expect(() => getExpectedRoleCounts(11, 'en')).toThrow('between 6 and 10');
   });
 
-  it('validates the exact role mix for 6 and 7 players', () => {
+  it('validates the exact role mix for 6 and 7 players while allowing clericless setups', () => {
     const sixPlayers = buildPlayers(6);
+    const sixPlayersWithoutCleric = buildPlayersWithoutCleric(6);
     const invalidSixPlayers = sixPlayers.map((player, index) =>
       index === 5
         ? {
@@ -89,6 +101,7 @@ describe('game logic', () => {
         : player,
     );
     const sevenPlayers = buildPlayers(7);
+    const sevenPlayersWithoutCleric = buildPlayersWithoutCleric(7);
     const invalidSevenPlayers = sevenPlayers.map((player, index) =>
       index === 0
         ? {
@@ -99,8 +112,10 @@ describe('game logic', () => {
     );
 
     expect(validateSetupPlayers(sixPlayers, 6)).toBeNull();
+    expect(validateSetupPlayers(sixPlayersWithoutCleric, 6)).toBeNull();
     expect(validateSetupPlayers(invalidSixPlayers, 6)).toContain('1 vampir');
     expect(validateSetupPlayers(sevenPlayers, 7)).toBeNull();
+    expect(validateSetupPlayers(sevenPlayersWithoutCleric, 7)).toBeNull();
     expect(validateSetupPlayers(invalidSevenPlayers, 7)).toContain('2 vampir');
   });
 
@@ -113,6 +128,41 @@ describe('game logic', () => {
     expect(randomized.filter((player) => player.role === 'cleric')).toHaveLength(1);
     expect(randomized.filter((player) => player.role === 'villager')).toHaveLength(4);
     expect(randomized.map((player) => player.role)).not.toEqual(players.map((player) => player.role));
+  });
+
+  it('creates a game even when randomUUID is unavailable', () => {
+    const originalCrypto = globalThis.crypto;
+    const fakeCrypto = {
+      getRandomValues(array: Uint8Array) {
+        return array.fill(7);
+      },
+    } as Crypto;
+
+    vi.stubGlobal('crypto', fakeCrypto);
+
+    const gameState = createGame(buildPlayers(6), () => 0);
+    expect(gameState.players).toHaveLength(6);
+    expect(gameState.players.every((player) => player.id.length > 0)).toBe(true);
+
+    vi.stubGlobal('crypto', originalCrypto);
+  });
+
+  it('creates a valid game without a cleric and resolves nights with only vampire input', () => {
+    let gameState = createGame(buildPlayersWithoutCleric(6), () => 0);
+
+    expect(gameState.clericId).toBeNull();
+    expect(gameState.config.hasCleric).toBe(false);
+
+    gameState = beginNight(gameState, () => 0);
+    gameState = updateNightInput(gameState, {
+      vampirePrimaryTargetId: gameState.players[2].id,
+    });
+
+    expect(getNightValidationError(gameState)).toBeNull();
+
+    const resolved = resolveNight(gameState);
+    expect(resolved.lastNightResult?.deaths).toEqual([gameState.players[2].id]);
+    expect(resolved.players[2].alive).toBe(false);
   });
 
   it('prevents cleric from protecting self or the previous target on a normal night', () => {

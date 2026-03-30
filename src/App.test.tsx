@@ -62,4 +62,29 @@ describe('App locale switching', () => {
     expect(screen.getByRole('heading', { name: 'Oyun Özeti' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Gece 1' })).toBeInTheDocument();
   });
+
+  it('can start a game without assigning any cleric', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.selectOptions(screen.getByLabelText('Oyuncu Sayısı'), '6');
+
+    const nameInputs = screen.getAllByLabelText('Oyuncu Adı');
+    for (const [index, input] of nameInputs.entries()) {
+      await user.clear(input);
+      await user.type(input, `Oyuncu ${index + 1}`);
+    }
+
+    const roleSelects = screen.getAllByLabelText('Rol');
+    const clericSelect = roleSelects.find((select) => (select as HTMLSelectElement).value === 'cleric');
+    if (!clericSelect) {
+      throw new Error('Cleric select bulunamadi.');
+    }
+
+    await user.selectOptions(clericSelect, 'villager');
+    await user.click(screen.getByRole('button', { name: 'Oyunu Başlat' }));
+
+    expect(screen.getByRole('heading', { name: 'Oyun Özeti' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Gece 1' })).toBeInTheDocument();
+  });
 });

@@ -18,7 +18,7 @@ type LocalizedText = Record<Locale, string>;
 export interface GameConfig {
   playerCount: number;
   vampireCount: number;
-  hasCleric: true;
+  hasCleric: boolean;
 }
 
 export interface Player {
@@ -101,7 +101,7 @@ export interface GameState {
   activeEventId: string | null;
   currentNight: NightState | null;
   lastNightResult: NightResult | null;
-  clericId: string;
+  clericId: string | null;
   clericLastTargetId: string | null;
   clericLastTargetIds: string[];
   logs: GameLogEntry[];
@@ -132,7 +132,7 @@ const GAME_COPY = {
     wrongPlayerCount: 'Oyuncu sayısı eksik ya da fazla.',
     noCleric: 'Cleric bulunamadı.',
     requireVampires: (count: number) => `${count} vampir seçilmelidir.`,
-    requireCleric: 'Tam olarak 1 Cleric seçilmelidir.',
+    maxCleric: 'En fazla 1 Cleric seçilebilir.',
     requireVillagers: 'Kalan bütün roller köylü olmalıdır.',
     nightNotStarted: 'Gece başlatılmadı.',
     primaryTarget: 'Vampirler için geçerli bir ana hedef seçilmelidir.',
@@ -171,7 +171,7 @@ const GAME_COPY = {
     wrongPlayerCount: 'The player count is missing or incorrect.',
     noCleric: 'No cleric was found.',
     requireVampires: (count: number) => `You must assign ${count} vampires.`,
-    requireCleric: 'You must assign exactly 1 cleric.',
+    maxCleric: 'You can assign at most 1 cleric.',
     requireVillagers: 'All remaining roles must be villagers.',
     nightNotStarted: 'The night has not started.',
     primaryTarget: 'Choose a valid primary target for the vampires.',
@@ -381,6 +381,24 @@ function playerNamesFromIds(players: Player[], playerIds: string[]): string {
     .join(', ');
 }
 
+function createPlayerId(random: () => number = Math.random): string {
+  if (typeof globalThis.crypto !== 'undefined') {
+    if (typeof globalThis.crypto.randomUUID === 'function') {
+      return globalThis.crypto.randomUUID();
+    }
+
+    if (typeof globalThis.crypto.getRandomValues === 'function') {
+      const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
+      bytes[6] = (bytes[6] & 0x0f) | 0x40;
+      bytes[8] = (bytes[8] & 0x3f) | 0x80;
+      const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+      return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+    }
+  }
+
+  return `player-${Math.round(random() * 1_000_000_000)}-${Date.now()}`;
+}
+
 export function getExpectedRoleCounts(playerCount: number, locale: Locale = 'tr'): GameConfig {
   if (playerCount < 6 || playerCount > 10) {
     throw new Error(copy(locale).invalidPlayerCount);
@@ -396,7 +414,7 @@ export function getExpectedRoleCounts(playerCount: number, locale: Locale = 'tr'
   return {
     playerCount,
     vampireCount,
-    hasCleric: true,
+    hasCleric: false,
   };
 }
 
@@ -511,11 +529,11 @@ export function validateSetupPlayers(
     return text.requireVampires(counts.vampireCount);
   }
 
-  if (clerics !== 1) {
-    return text.requireCleric;
+  if (clerics > 1) {
+    return text.maxCleric;
   }
 
-  if (villagers !== playerCount - counts.vampireCount - 1) {
+  if (villagers !== playerCount - counts.vampireCount - clerics) {
     return text.requireVillagers;
   }
 
@@ -532,9 +550,9 @@ export function createGame(
     throw new Error(validationError);
   }
 
-  const config = getExpectedRoleCounts(playerInputs.length);
+  const expectedConfig = getExpectedRoleCounts(playerInputs.length);
   const players = playerInputs.map((player) => ({
-    id: crypto.randomUUID(),
+    id: createPlayerId(random),
     name: player.name.trim(),
     role: player.role,
     alive: true,
@@ -543,13 +561,12 @@ export function createGame(
   }));
   const cleric = players.find((player) => player.role === 'cleric');
 
-  if (!cleric) {
-    throw new Error(copy(locale).noCleric);
-  }
-
   return {
     version: 2,
-    config,
+    config: {
+      ...expectedConfig,
+      hasCleric: Boolean(cleric),
+    },
     players,
     nightNumber: 1,
     phase: 'night',
@@ -558,7 +575,7 @@ export function createGame(
     activeEventId: null,
     currentNight: null,
     lastNightResult: null,
-    clericId: cleric.id,
+    clericId: cleric?.id ?? null,
     clericLastTargetId: null,
     clericLastTargetIds: [],
     logs: [],
@@ -700,7 +717,9 @@ export function getNightValidationError(gameState: GameState, locale: Locale = '
   const alivePlayerIds = new Set(alivePlayers.map((player) => player.id));
   const validVampireTargetIds = new Set(getLivingVampireTargets(gameState.players).map((player) => player.id));
   const rules = getNightRules(currentNight.activeEventId);
-  const clericAlive = alivePlayers.some((player) => player.id === gameState.clericId);
+  const clericAlive = gameState.clericId
+    ? alivePlayers.some((player) => player.id === gameState.clericId)
+    : false;
 
   if (!currentNight.vampirePrimaryTargetId || !validVampireTargetIds.has(currentNight.vampirePrimaryTargetId)) {
     return text.primaryTarget;
@@ -893,7 +912,9 @@ export function resolveNight(gameState: GameState, locale: Locale = 'tr'): GameS
   }
 
   const alivePlayers = getAlivePlayers(gameState.players);
-  const clericAlive = alivePlayers.some((player) => player.id === gameState.clericId);
+  const clericAlive = gameState.clericId
+    ? alivePlayers.some((player) => player.id === gameState.clericId)
+    : false;
   const rules = getNightRules(currentNight.activeEventId);
   const protectedIds = new Set<string>();
 

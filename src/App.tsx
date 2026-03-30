@@ -107,6 +107,8 @@ function SetupScreen({
   const [players, setPlayers] = useState<SetupPlayerInput[]>(() => buildDefaultPlayers(8));
   const [error, setError] = useState<string | null>(null);
   const expected = getExpectedRoleCounts(playerCount);
+  const minimumVillagers = playerCount - expected.vampireCount - 1;
+  const maximumVillagers = playerCount - expected.vampireCount;
   const currentCounts = useMemo(
     () => ({
       vampires: players.filter((player) => player.role === 'vampire').length,
@@ -145,7 +147,11 @@ function SetupScreen({
       return;
     }
 
-    onCreate(players);
+    try {
+      onCreate(players);
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : String(submitError));
+    }
   }
 
   function handleRandomizeRoles() {
@@ -187,11 +193,15 @@ function SetupScreen({
             <span>{copy.vampiresTarget}</span>
           </div>
           <div className="count-pill">
-            <strong>1</strong>
+            <strong>0-1</strong>
             <span>{copy.clericTarget}</span>
           </div>
           <div className="count-pill">
-            <strong>{playerCount - expected.vampireCount - 1}</strong>
+            <strong>
+              {minimumVillagers === maximumVillagers
+                ? minimumVillagers
+                : `${minimumVillagers}-${maximumVillagers}`}
+            </strong>
             <span>{copy.villagerTarget}</span>
           </div>
         </div>
@@ -361,7 +371,9 @@ function NightPanel({
   }
 
   const activeNight = gameState.currentNight;
-  const clericAlive = getAlivePlayers(gameState.players).some((player) => player.id === gameState.clericId);
+  const clericAlive = gameState.clericId
+    ? getAlivePlayers(gameState.players).some((player) => player.id === gameState.clericId)
+    : false;
 
   if (!activeNight) {
     return (
@@ -871,9 +883,10 @@ export default function App() {
   }
 
   function handleCreateGame(players: SetupPlayerInput[]) {
+    const nextGame = createGame(players, Math.random, locale);
     startTransition(() => {
       setShowRoles(false);
-      setGameState(createGame(players, Math.random, locale));
+      setGameState(nextGame);
     });
   }
 
