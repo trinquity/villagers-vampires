@@ -1,24 +1,22 @@
 import {
   beginNight,
+  buildSetupRoles,
   createGame,
   drawEventCard,
   getExpectedRoleCounts,
   getNightValidationError,
+  randomizeSetupPlayers,
   resolveDay,
   resolveNight,
   updateNightInput,
+  validateSetupPlayers,
   type GameState,
   type Role,
   type SetupPlayerInput,
 } from './game';
 
 function buildPlayers(playerCount: number): SetupPlayerInput[] {
-  const config = getExpectedRoleCounts(playerCount);
-  const roles: Role[] = [
-    ...Array.from({ length: config.vampireCount }, () => 'vampire' as const),
-    'cleric',
-    ...Array.from({ length: playerCount - config.vampireCount - 1 }, () => 'villager' as const),
-  ];
+  const roles: Role[] = buildSetupRoles(playerCount);
 
   return roles.map((role, index) => ({
     name: `Oyuncu ${index + 1}`,
@@ -67,10 +65,54 @@ function selectNightInputs(gameState: GameState, primaryTargetIndex = 3): GameSt
 }
 
 describe('game logic', () => {
-  it('assigns the correct vampire counts for 8, 9, and 10 players', () => {
+  it('assigns the correct vampire counts for 6 through 10 players', () => {
+    expect(getExpectedRoleCounts(6).vampireCount).toBe(1);
+    expect(getExpectedRoleCounts(7).vampireCount).toBe(2);
     expect(getExpectedRoleCounts(8).vampireCount).toBe(2);
     expect(getExpectedRoleCounts(9).vampireCount).toBe(2);
     expect(getExpectedRoleCounts(10).vampireCount).toBe(3);
+  });
+
+  it('rejects player counts outside 6 through 10 with localized messages', () => {
+    expect(() => getExpectedRoleCounts(5)).toThrow('6 ile 10');
+    expect(() => getExpectedRoleCounts(11, 'en')).toThrow('between 6 and 10');
+  });
+
+  it('validates the exact role mix for 6 and 7 players', () => {
+    const sixPlayers = buildPlayers(6);
+    const invalidSixPlayers = sixPlayers.map((player, index) =>
+      index === 5
+        ? {
+            ...player,
+            role: 'vampire' as const,
+          }
+        : player,
+    );
+    const sevenPlayers = buildPlayers(7);
+    const invalidSevenPlayers = sevenPlayers.map((player, index) =>
+      index === 0
+        ? {
+            ...player,
+            role: 'villager' as const,
+          }
+        : player,
+    );
+
+    expect(validateSetupPlayers(sixPlayers, 6)).toBeNull();
+    expect(validateSetupPlayers(invalidSixPlayers, 6)).toContain('1 vampir');
+    expect(validateSetupPlayers(sevenPlayers, 7)).toBeNull();
+    expect(validateSetupPlayers(invalidSevenPlayers, 7)).toContain('2 vampir');
+  });
+
+  it('randomizes setup roles without changing player names', () => {
+    const players = buildPlayers(6);
+    const randomized = randomizeSetupPlayers(players, 6, () => 0);
+
+    expect(randomized.map((player) => player.name)).toEqual(players.map((player) => player.name));
+    expect(randomized.filter((player) => player.role === 'vampire')).toHaveLength(1);
+    expect(randomized.filter((player) => player.role === 'cleric')).toHaveLength(1);
+    expect(randomized.filter((player) => player.role === 'villager')).toHaveLength(4);
+    expect(randomized.map((player) => player.role)).not.toEqual(players.map((player) => player.role));
   });
 
   it('prevents cleric from protecting self or the previous target on a normal night', () => {

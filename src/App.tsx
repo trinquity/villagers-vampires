@@ -2,6 +2,7 @@ import { startTransition, useEffect, useMemo, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import {
   beginNight,
+  buildSetupRoles,
   createGame,
   getAlivePlayers,
   getDayNoteText,
@@ -13,6 +14,7 @@ import {
   getRoleLabel,
   getTeamLabel,
   getLivingVampireTargets,
+  randomizeSetupPlayers,
   resolveDay,
   resolveNight,
   updateNightInput,
@@ -29,19 +31,12 @@ import { loadGameState, loadLocale, saveGameState, saveLocale } from './storage'
 const ROLE_OPTIONS: Role[] = ['vampire', 'cleric', 'villager'];
 
 function buildDefaultPlayers(playerCount: number, existing: SetupPlayerInput[] = []): SetupPlayerInput[] {
-  const counts = getExpectedRoleCounts(playerCount);
+  const roles = buildSetupRoles(playerCount);
 
   return Array.from({ length: playerCount }, (_, index) => {
-    let role: Role = 'villager';
-    if (index < counts.vampireCount) {
-      role = 'vampire';
-    } else if (index === counts.vampireCount) {
-      role = 'cleric';
-    }
-
     return {
       name: existing[index]?.name ?? '',
-      role: existing[index]?.role ?? role,
+      role: existing[index]?.role ?? roles[index],
     };
   });
 }
@@ -153,6 +148,11 @@ function SetupScreen({
     onCreate(players);
   }
 
+  function handleRandomizeRoles() {
+    setPlayers((currentPlayers) => randomizeSetupPlayers(currentPlayers, playerCount));
+    setError(null);
+  }
+
   return (
     <main className="app-shell">
       <LanguageBar locale={locale} onLocaleChange={onLocaleChange} />
@@ -172,6 +172,8 @@ function SetupScreen({
           <label className="field compact-field">
             <span>{copy.playerCount}</span>
             <select value={playerCount} onChange={handlePlayerCountChange}>
+              <option value={6}>6</option>
+              <option value={7}>7</option>
               <option value={8}>8</option>
               <option value={9}>9</option>
               <option value={10}>10</option>
@@ -237,9 +239,14 @@ function SetupScreen({
                 {getRoleLabel('cleric', locale)}, {currentCounts.villagers} {getRoleLabel('villager', locale)}
               </strong>
             </div>
-            <button className="primary-button" type="submit">
-              {copy.startGame}
-            </button>
+            <div className="inline-actions">
+              <button className="ghost-button" type="button" onClick={handleRandomizeRoles}>
+                {copy.randomizeRoles}
+              </button>
+              <button className="primary-button" type="submit">
+                {copy.startGame}
+              </button>
+            </div>
           </div>
 
           {error ? <p className="error-box">{error}</p> : null}

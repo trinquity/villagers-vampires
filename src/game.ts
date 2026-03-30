@@ -126,7 +126,7 @@ interface NightRules {
 
 const GAME_COPY = {
   tr: {
-    invalidPlayerCount: 'Oyun 8 ile 10 kişi arasında olmalıdır.',
+    invalidPlayerCount: 'Oyun 6 ile 10 kişi arasında olmalıdır.',
     missingNames: 'Tüm oyuncuların adı doldurulmalıdır.',
     duplicateNames: 'Oyuncu isimleri benzersiz olmalıdır.',
     wrongPlayerCount: 'Oyuncu sayısı eksik ya da fazla.',
@@ -165,7 +165,7 @@ const GAME_COPY = {
     },
   },
   en: {
-    invalidPlayerCount: 'The game must have between 8 and 10 players.',
+    invalidPlayerCount: 'The game must have between 6 and 10 players.',
     missingNames: 'Every player name must be filled in.',
     duplicateNames: 'Player names must be unique.',
     wrongPlayerCount: 'The player count is missing or incorrect.',
@@ -381,17 +381,50 @@ function playerNamesFromIds(players: Player[], playerIds: string[]): string {
     .join(', ');
 }
 
-export function getExpectedRoleCounts(playerCount: number): GameConfig {
-  if (playerCount < 8 || playerCount > 10) {
-    throw new Error(copy('tr').invalidPlayerCount);
+export function getExpectedRoleCounts(playerCount: number, locale: Locale = 'tr'): GameConfig {
+  if (playerCount < 6 || playerCount > 10) {
+    throw new Error(copy(locale).invalidPlayerCount);
   }
 
-  const vampireCount = playerCount === 10 ? 3 : 2;
+  let vampireCount = 2;
+  if (playerCount === 6) {
+    vampireCount = 1;
+  } else if (playerCount === 10) {
+    vampireCount = 3;
+  }
+
   return {
     playerCount,
     vampireCount,
     hasCleric: true,
   };
+}
+
+export function buildSetupRoles(playerCount: number): Role[] {
+  const config = getExpectedRoleCounts(playerCount);
+  return [
+    ...Array.from({ length: config.vampireCount }, () => 'vampire' as const),
+    'cleric',
+    ...Array.from({ length: playerCount - config.vampireCount - 1 }, () => 'villager' as const),
+  ];
+}
+
+export function randomizeSetupPlayers(
+  playerInputs: SetupPlayerInput[],
+  playerCount: number,
+  random: () => number = Math.random,
+): SetupPlayerInput[] {
+  const roles = [...buildSetupRoles(playerCount)];
+
+  for (let index = roles.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(random() * (index + 1));
+    [roles[index], roles[swapIndex]] = [roles[swapIndex], roles[index]];
+  }
+
+  return Array.from({ length: playerCount }, (_, index) => ({
+    name: playerInputs[index]?.name ?? '',
+    role: roles[index],
+  }));
 }
 
 export function getRoleLabel(role: Role, locale: Locale = 'tr'): string {
