@@ -36,7 +36,7 @@ function buildDefaultPlayers(playerCount: number, existing: SetupPlayerInput[] =
   return Array.from({ length: playerCount }, (_, index) => {
     return {
       name: existing[index]?.name ?? '',
-      role: existing[index]?.role ?? roles[index],
+      role: roles[index],
     };
   });
 }

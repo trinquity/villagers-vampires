@@ -44,4 +44,22 @@ describe('App locale switching', () => {
 
     randomSpy.mockRestore();
   });
+
+  it('can start the game after switching the player count to 6', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.selectOptions(screen.getByLabelText('Oyuncu Sayısı'), '6');
+
+    const nameInputs = screen.getAllByLabelText('Oyuncu Adı');
+    for (const [index, input] of nameInputs.entries()) {
+      await user.clear(input);
+      await user.type(input, `Oyuncu ${index + 1}`);
+    }
+
+    await user.click(screen.getByRole('button', { name: 'Oyunu Başlat' }));
+
+    expect(screen.getByRole('heading', { name: 'Oyun Özeti' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Gece 1' })).toBeInTheDocument();
+  });
 });
