@@ -1,0 +1,7 @@
+services:
+  vampire-villagers:
+    image: ${IMAGE_NAME:-ghcr.io/YOUR_GITHUB_USER/vampire_villagers}:${IMAGE_TAG:-latest}
+    container_name: vampire-villagers
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-8080}:80"
